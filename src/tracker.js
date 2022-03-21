@@ -3,7 +3,7 @@ import dgram from 'dgram';
 import { Buffer } from 'buffer';
 import { urlParse } from 'url';
 
-const getPeers = (torrent, callback) => {
+function getPeers(torrent, callback) {
     const socket = dgram.createSocket('udp4');
     const url = torrent.announce.toString('utf8');
 
@@ -23,16 +23,16 @@ const getPeers = (torrent, callback) => {
     });
 }
 
-const udpSendMessage = (socket, message, url, callback=()=>{}) => {
+function udpSendMessage(socket, message, url, callback=()=>{}) {
     const { port, host } = urlParse(url);
     socket.send(message, 0, message.length, port, host, callback);
 }
 
-const responseType = response => {
+function responseType(response) {
     // ...
 };
 
-const getConnectionRequest = () => {
+function getConnectionRequest() {
     const buf = Buffer.alloc(16);
     buf.writeUInt32BE(0x00000417, 0);
     buf.writeUInt32BE(0x27101980, 4);
@@ -41,17 +41,19 @@ const getConnectionRequest = () => {
     return buf;
 }
 
-const parseConnectionResponse = response => ({
-    action: response.readUInt32BE(0),
-    transactionId: response.readUInt32BE(4),
-    connectionId: response.slice(8)
-});
+function parseConnectionResponse(response) {
+    return {
+        action: response.readUInt32BE(0),
+        transactionId: response.readUInt32BE(4),
+        connectionId: response.slice(8)
+    }
+}
 
-const getAnnounceRequest = connectionId => {
+function getAnnounceRequest(connectionId) {
     // ...
 }
 
-const parseAnnounceResponse = response => {
+function parseAnnounceResponse(response) {
     // ...
 }
 
