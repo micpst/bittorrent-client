@@ -1,5 +1,5 @@
-import * as torrentParser from './torrent-parser';
-import * as tracker from './tracker';
+import * as torrentParser from './torrent-parser.js';
+import * as tracker from './tracker.js';
 
 const torrent = torrentParser.open('puppy.torrent');
 

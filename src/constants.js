@@ -1,5 +1,5 @@
 // Magic constant
-export const PROTOCOL_ID = 0x41727101980;
+export const PROTOCOL_ID = 0x41727101980n;
 
 // Actions
 export const ACTION_CONNECT = 0;
