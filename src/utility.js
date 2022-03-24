@@ -3,11 +3,11 @@ import crypto from 'crypto';
 let id = null;
 
 export const generatePeerId = () => {
-    if (id !== null)
-        return id;
-    const newId = Buffer.alloc(20, '-MP0001-');
-    crypto.randomBytes(13).copy(newId, 7);
-    return newId;
+    if (id === null) {
+        id = Buffer.alloc(20, '-MP0001-');
+        crypto.randomBytes(13).copy(id, 7);
+    }
+    return id;
 }
 
 export const chunk = (iterable, chunkSize) =>
