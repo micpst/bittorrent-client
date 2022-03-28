@@ -7,6 +7,7 @@
     "license": "MIT",
     "type": "module",
     "dependencies": {
-        "bencode": "^2.0.2"
+        "bencode": "^2.0.2",
+        "magnet-uri": "^6.2.0"
     }
 }

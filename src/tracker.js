@@ -2,21 +2,22 @@ import crypto from 'crypto';
 import dgram from 'dgram';
 
 import * as constants from './constants.js';
-import * as torrentParser from './torrent-parser.js';
 import * as utility from './utility.js';
 
 export const getPeers = (torrent, callback) => {
-    const socket = dgram.createSocket('udp4');
-    const url = torrent.announce.toString('utf8');
+    const client = dgram.createSocket('udp4');
+    const url = torrent.announce.toString();
 
     const connectionRequest = getConnectionRequest();
-    udpSendMessage(socket, connectionRequest, url);
+    udpSendMessage(client, connectionRequest, url);
 
-    socket.on('message', response => {
+    client.on('message', response => {
+        console.log(response)
+
         if (responseType(response) === 'connect') {
             const { connectionId } = parseConnectionResponse(response);
             const announceRequest = getAnnounceRequest(connectionId);
-            udpSendMessage(socket, announceRequest, url);
+            udpSendMessage(client, announceRequest, url);
 
         } else if (responseType(response) === 'announce') {
             const { peers } = parseAnnounceResponse(response);
@@ -25,9 +26,10 @@ export const getPeers = (torrent, callback) => {
     });
 }
 
-const udpSendMessage = (socket, message, url, callback=()=>{}) => {
-    const { port, host } = new URL(url);
-    socket.send(message, 0, message.length, port, host, callback);
+const udpSendMessage = (socket, message, url) => {
+    const { port, hostname } = new URL(url)
+    console.log(port, hostname)
+    socket.send(message, 0, message.length, port, hostname);
 }
 
 const responseType = response => {
@@ -67,12 +69,10 @@ const getAnnounceRequest = (connectionId, torrent, port=6681) => {
     requestBuffer.writeBigUInt64BE(connectionId, 0);
     requestBuffer.writeUInt32BE(constants.ACTION_ANNOUNCE, 8);
     requestBuffer.writeUInt32BE(transactionId, 12);
-
-    torrentParser.infoHash(torrent).copy(requestBuffer, 16);
+    torrent.infoHashBuffer.copy(requestBuffer, 16);
     utility.generatePeerId().copy(requestBuffer, 36);
-
     requestBuffer.writeBigUInt64BE(0n, 56);
-    requestBuffer.writeBigUInt64BE(torrentParser.size(torrent), 64)
+    requestBuffer.writeBigUInt64BE(torrent.length, 64)
     requestBuffer.writeBigUInt64BE(0n, 72);
     requestBuffer.writeUInt32BE(0, 80);
     requestBuffer.writeUInt32BE(0, 84);
