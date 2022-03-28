@@ -37,7 +37,7 @@ const getAnnounce = torrent => {
 
 const getInfoLength = torrent =>
     torrent.info.files
-        ? torrent.info.files.reduce((sum, file) => BigInt(sum) + BigInt(file.length))
+        ? torrent.info.files.map(file => BigInt(file.length)).reduce((sum, len) => sum + len)
         : BigInt(torrent.info.length);
 
 const decodeMagnetUri = uri => {
