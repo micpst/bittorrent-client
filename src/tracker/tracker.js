@@ -1,4 +1,4 @@
-import HttpHandler from "./http.js";
+// import HttpHandler from "./http.js";
 import UdpHandler from './udp.js';
 
 export default class Tracker {
@@ -16,12 +16,14 @@ export default class Tracker {
 
     fetchPeers() {
         return new Promise(async (resolve, reject) => {
-            if (this.handler)
+            if (this.handler) {
                 await this.handler.handleAnnounce(this.url, this.torrent, (data, error) =>
                     error ? reject(error) : resolve(data)
                 );
-            else
+            }
+            else {
                 reject(new Error(`Unsupported tracker protocol '${this.url.protocol}'`));
+            }
         });
     }
 }

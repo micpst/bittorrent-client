@@ -77,7 +77,7 @@ export default class UdpHandler {
                 break;
             case ACTION_ANNOUNCE:
                 const announceResponse = this.parseAnnounceResponse(response);
-                this.closeConnection(announceResponse, null);
+                this.handleResponse(announceResponse);
                 break;
             case ACTION_SCRAPE:
                 break;
@@ -94,23 +94,23 @@ export default class UdpHandler {
         this.closeConnection(null, error);
     }
 
+    handleResponse(data) {
+        this.closeConnection(data, null);
+    }
+
     sendData(data) {
         const { hostname, port } = this.url;
         return new Promise((resolve, reject) => {
-            this.socket.send(data, 0, data.length, port, hostname, error =>
-                error ? reject(error) : resolve()
-            );
+            this.socket.send(data, 0, data.length, port, hostname, error => error ? reject(error) : resolve());
         });
     }
 
-    setTimeout(callback, ...args) {
-        if (this.triesCounter <= UDP_MAX_TRIES) {
-            const timeout = UDP_BASE_TIMEOUT_MS * 2 ** this.triesCounter++;
-            this.timeoutId = setTimeout(callback.bind(this), timeout, ...args);
+    setTimeout(callback) {
+        if (this.triesCounter > UDP_MAX_TRIES) {
+            throw new Error('Tracker server timeout');
         }
-        else {
-            this.handleError(new Error('Tracker server timeout'));
-        }
+        const timeout = UDP_BASE_TIMEOUT_MS * 2 ** this.triesCounter++;
+        this.timeoutId = setTimeout(callback.bind(this), timeout);
     }
 
     clearTimeout() {
