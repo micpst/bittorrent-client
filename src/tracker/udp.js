@@ -25,22 +25,37 @@ export default class UdpHandler {
     triesCounter = 0;
     url;
 
-    async openConnection(url, torrent, callback) {
-        this.socket = dgram.createSocket('udp4')
-            .on('message', this.handleMessage.bind(this))
-            .on('error', this.handleError.bind(this));
-
+    async handleAnnounce(url, torrent, callback) {
         this.callback = callback;
         this.torrent = torrent;
         this.url = url;
 
-        await this.sendConnectRequest();
+        this.socket = dgram.createSocket('udp4')
+            .on('message', this.handleMessage.bind(this))
+            .on('error', this.handleError.bind(this));
+
+        await this.announce();
     }
 
     closeConnection(data, error) {
         this.clearTimeout();
         this.socket.close();
         this.callback(data, error);
+    }
+
+    async announce() {
+        try {
+            this.generateTransactionId();
+            const request = this.isConnectionIdValid() ?
+                this.buildAnnounceRequest() :
+                this.buildConnectionRequest();
+
+            await this.sendData(request);
+            this.setTimeout(this.announce);
+        }
+        catch (error) {
+            this.handleError(error);
+        }
     }
 
     async handleMessage(response) {
@@ -50,15 +65,15 @@ export default class UdpHandler {
         const transactionId = response.readUInt32BE(4);
 
         if (transactionId !== this.transactionId) {
-            this.closeConnection(null, new Error('Received invalid transaction ID from the tracker server'));
+            this.handleError(new Error('Received invalid transaction ID from the tracker server'));
             return;
         }
 
         switch (action) {
             case ACTION_CONNECT:
                 const { connectionId } = this.parseConnectionResponse(response);
-                this.setConnectionId(connectionId);
-                await this.sendAnnounceRequest();
+                this.updateConnectionId(connectionId);
+                await this.announce();
                 break;
             case ACTION_ANNOUNCE:
                 const announceResponse = this.parseAnnounceResponse(response);
@@ -67,8 +82,8 @@ export default class UdpHandler {
             case ACTION_SCRAPE:
                 break;
             case ACTION_ERROR:
-                const message = response.subarray(8).toString();
-                this.closeConnection(null, new Error(message));
+                const { message } = this.parseErrorResponse(response);
+                this.handleError(new Error(message));
                 break;
             default:
                 // Unknown action received from server.
@@ -76,13 +91,13 @@ export default class UdpHandler {
     }
 
     handleError(error) {
-        this.closeConnection(null, new Error(error.message));
+        this.closeConnection(null, error);
     }
 
     sendData(data) {
         const { hostname, port } = this.url;
         return new Promise((resolve, reject) => {
-            this.socket.send(data, 0, data.length, port, hostname, (error) =>
+            this.socket.send(data, 0, data.length, port, hostname, error =>
                 error ? reject(error) : resolve()
             );
         });
@@ -107,7 +122,7 @@ export default class UdpHandler {
         this.transactionId = crypto.randomBytes(4).readUInt32BE();
     }
 
-    setConnectionId(connectionId) {
+    updateConnectionId(connectionId) {
         this.connectionId = connectionId;
         this.connectionExpiration = new Date().getTime() + 1.5 * 60 * 1000;
     }
@@ -115,33 +130,6 @@ export default class UdpHandler {
     isConnectionIdValid() {
         const now = new Date().getTime();
         return now <= this.connectionExpiration;
-    }
-
-    async sendConnectRequest() {
-        try {
-            this.generateTransactionId();
-            await this.sendData(this.buildConnectionRequest());
-            this.setTimeout(this.sendConnectRequest);
-        }
-        catch (error) {
-            this.handleError(error);
-        }
-    }
-
-    async sendAnnounceRequest() {
-        try {
-            if (this.isConnectionIdValid()) {
-                this.generateTransactionId();
-                await this.sendData(this.buildAnnounceRequest());
-                this.setTimeout(this.sendAnnounceRequest);
-            }
-            else {
-                await this.sendConnectRequest();
-            }
-        }
-        catch (error) {
-            this.handleError(error);
-        }
     }
 
     buildConnectionRequest() {
@@ -195,6 +183,14 @@ export default class UdpHandler {
                     ip: address.subarray(0, 4).join('.'),
                     port: address.readUInt16BE(4)
                 }))
+        };
+    }
+
+    parseErrorResponse(response) {
+        return {
+            action: response.readUInt32BE(0),
+            transactionId: response.readUInt32BE(4),
+            message: response.subarray(8).toString()
         };
     }
 }
