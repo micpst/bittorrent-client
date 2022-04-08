@@ -25,7 +25,7 @@ export default class UdpHandler {
     triesCounter = 0;
     url;
 
-    async handleAnnounce(url, torrent, callback) {
+    handleConnection(url, torrent, callback) {
         this.callback = callback;
         this.torrent = torrent;
         this.url = url;
@@ -34,7 +34,7 @@ export default class UdpHandler {
             .on('message', this.handleMessage.bind(this))
             .on('error', this.handleError.bind(this));
 
-        await this.announce();
+        this.sendAnnounceRequest();
     }
 
     closeConnection(data, error) {
@@ -43,22 +43,18 @@ export default class UdpHandler {
         this.callback(data, error);
     }
 
-    async announce() {
-        try {
-            this.generateTransactionId();
-            const request = this.isConnectionIdValid() ?
-                this.buildAnnounceRequest() :
-                this.buildConnectionRequest();
+    sendAnnounceRequest() {
+        this.generateTransactionId();
+        const request = this.isConnectionIdValid() ?
+            this.buildAnnounceRequest() :
+            this.buildConnectionRequest();
 
-            await this.sendData(request);
-            this.setTimeout(this.announce);
-        }
-        catch (error) {
-            this.handleError(error);
-        }
+        this.sendData(request)
+            .then(() => this.setTimeout(this.sendAnnounceRequest))
+            .catch(error => this.handleError(error));
     }
 
-    async handleMessage(response) {
+    handleMessage(response) {
         this.clearTimeout();
 
         const action = response.readUInt32BE(0);
@@ -66,27 +62,27 @@ export default class UdpHandler {
 
         if (transactionId !== this.transactionId) {
             this.handleError(new Error('Received invalid transaction ID from the tracker server'));
-            return;
         }
-
-        switch (action) {
-            case ACTION_CONNECT:
-                const { connectionId } = this.parseConnectionResponse(response);
-                this.updateConnectionId(connectionId);
-                await this.announce();
-                break;
-            case ACTION_ANNOUNCE:
-                const announceResponse = this.parseAnnounceResponse(response);
-                this.handleResponse(announceResponse);
-                break;
-            case ACTION_SCRAPE:
-                break;
-            case ACTION_ERROR:
-                const { message } = this.parseErrorResponse(response);
-                this.handleError(new Error(message));
-                break;
-            default:
+        else {
+            switch (action) {
+                case ACTION_CONNECT:
+                    const { connectionId } = this.parseConnectionResponse(response);
+                    this.updateConnectionId(connectionId);
+                    this.sendAnnounceRequest();
+                    break;
+                case ACTION_ANNOUNCE:
+                    const announceResponse = this.parseAnnounceResponse(response);
+                    this.handleResponse(announceResponse);
+                    break;
+                case ACTION_SCRAPE:
+                    break;
+                case ACTION_ERROR:
+                    const { message } = this.parseErrorResponse(response);
+                    this.handleError(new Error(message));
+                    break;
+                default:
                 // Unknown action received from server.
+            }
         }
     }
 
