@@ -3,33 +3,34 @@ import dgram from 'dgram';
 
 import * as utility from '../utility.js';
 
-const PROTOCOL_ID = 0x41727101980n;
+const UDP_PROTOCOL_ID = 0x41727101980n;
 
-const ACTION_CONNECT = 0;
-const ACTION_ANNOUNCE = 1;
-const ACTION_SCRAPE = 2;
-const ACTION_ERROR = 3;
+const UDP_ACTION_CONNECT = 0;
+const UDP_ACTION_ANNOUNCE = 1;
+const UDP_ACTION_SCRAPE = 2;
+const UDP_ACTION_ERROR = 3;
 
 const UDP_BASE_TIMEOUT_MS = 15000;
-const UDP_MAX_TRIES = 8;
+const UDP_MAX_TRIES = 0; // Should be 8, set to 0 for speed
 
 export default class UdpHandler {
 
     callback;
+    config;
     connectionExpiration;
     connectionId;
+    metadata;
     socket;
     timeoutId;
-    torrent;
     transactionId;
     triesCounter = 0;
     url;
 
-    handleConnection(url, torrent, callback) {
+    handleConnection(url, config, metadata, callback) {
         this.callback = callback;
-        this.torrent = torrent;
+        this.config = config;
+        this.metadata = metadata;
         this.url = url;
-
         this.socket = dgram.createSocket('udp4')
             .on('message', this.handleMessage.bind(this))
             .on('error', this.handleError.bind(this));
@@ -61,27 +62,28 @@ export default class UdpHandler {
         const transactionId = response.readUInt32BE(4);
 
         if (transactionId !== this.transactionId) {
-            this.handleError(new Error('Received invalid transaction ID from the tracker server'));
+            this.handleError(new Error('Received invalid transaction ID from the server'));
         }
         else {
             switch (action) {
-                case ACTION_CONNECT:
+                case UDP_ACTION_CONNECT:
                     const { connectionId } = this.parseConnectionResponse(response);
                     this.updateConnectionId(connectionId);
                     this.sendAnnounceRequest();
                     break;
-                case ACTION_ANNOUNCE:
+                case UDP_ACTION_ANNOUNCE:
                     const announceResponse = this.parseAnnounceResponse(response);
                     this.handleResponse(announceResponse);
                     break;
-                case ACTION_SCRAPE:
+                case UDP_ACTION_SCRAPE:
+                    this.handleError(new Error('Scrape action is not supported'));
                     break;
-                case ACTION_ERROR:
+                case UDP_ACTION_ERROR:
                     const { message } = this.parseErrorResponse(response);
                     this.handleError(new Error(message));
                     break;
                 default:
-                // Unknown action received from server.
+                    this.handleError(new Error('Unknown action received from server'));
             }
         }
     }
@@ -103,7 +105,7 @@ export default class UdpHandler {
 
     setTimeout(callback) {
         if (this.triesCounter > UDP_MAX_TRIES) {
-            throw new Error('Tracker server timeout');
+            throw new Error('Server timeout');
         }
         const timeout = UDP_BASE_TIMEOUT_MS * 2 ** this.triesCounter++;
         this.timeoutId = setTimeout(callback.bind(this), timeout);
@@ -131,30 +133,30 @@ export default class UdpHandler {
     buildConnectionRequest() {
         const requestBuffer = Buffer.alloc(16);
 
-        requestBuffer.writeBigUInt64BE(PROTOCOL_ID, 0);
-        requestBuffer.writeUInt32BE(ACTION_CONNECT, 8);
+        requestBuffer.writeBigUInt64BE(UDP_PROTOCOL_ID, 0);
+        requestBuffer.writeUInt32BE(UDP_ACTION_CONNECT, 8);
         requestBuffer.writeUInt32BE(this.transactionId, 12);
 
         return requestBuffer;
     }
 
-    buildAnnounceRequest(port=6681) {
+    buildAnnounceRequest() {
         const key = crypto.randomBytes(4).readUInt32BE();
         const requestBuffer = Buffer.alloc(98);
 
         requestBuffer.writeBigUInt64BE(this.connectionId, 0);
-        requestBuffer.writeUInt32BE(ACTION_ANNOUNCE, 8);
+        requestBuffer.writeUInt32BE(UDP_ACTION_ANNOUNCE, 8);
         requestBuffer.writeUInt32BE(this.transactionId, 12);
-        requestBuffer.set(this.torrent.infoHashBuffer, 16);
-        requestBuffer.set(utility.generatePeerId(), 36);
+        requestBuffer.set(this.metadata.infoHashBuffer, 16);
+        requestBuffer.set(this.config.peerId, 36);
         requestBuffer.writeBigUInt64BE(0n, 56);
-        requestBuffer.writeBigUInt64BE(this.torrent.length, 64)
+        requestBuffer.writeBigUInt64BE(this.metadata.length, 64)
         requestBuffer.writeBigUInt64BE(0n, 72);
         requestBuffer.writeUInt32BE(0, 80);
         requestBuffer.writeUInt32BE(0, 84);
         requestBuffer.writeUInt32BE(key, 88);
         requestBuffer.writeInt32BE(-1, 92);
-        requestBuffer.writeUInt16BE(port, 96);
+        requestBuffer.writeUInt16BE(this.config.port, 96);
 
         return requestBuffer;
     }
