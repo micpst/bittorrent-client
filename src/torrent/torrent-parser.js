@@ -13,6 +13,7 @@ export default class TorrentMetadata {
     infoName;
     infoLength;
     infoPieceLength;
+    infoPieces;
 
     constructor(torrentId) {
         if (torrentId.endsWith('.torrent')) {
@@ -30,6 +31,7 @@ export default class TorrentMetadata {
         this.extractInfoName(torrentObject);
         this.extractInfoLength(torrentObject);
         this.extractPieceLength(torrentObject);
+        this.infoPieces = torrentObject.info.pieces;
     }
 
     extractAnnounce(torrent) {

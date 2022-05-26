@@ -8,11 +8,10 @@ export default class PieceManager {
 
     constructor(metadata) {
         function buildPiecesArray() {
-            const nPieces = metadata.infoPieceLength / 20;
+            const nPieces = metadata.infoPieces.length / 20;
             const arr = new Array(nPieces).fill(null);
             return arr.map((_, i) => new Array(metadata.getBlocksPerPiece(i)).fill(false));
         }
-
         this.requested = buildPiecesArray();
         this.received = buildPiecesArray();
     }

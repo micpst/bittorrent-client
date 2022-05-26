@@ -37,12 +37,12 @@ export class Message {
         return new Message(id, payload);
     }
 
-    static buildRequest(index, begin, length) {
+    static buildRequest({index, begin, length}) {
         const payload = Buffer.alloc(12);
 
-        payload.writeUInt32BE(0, index);
-        payload.writeUInt32BE(4, begin);
-        payload.writeUInt32BE(8, length);
+        payload.writeUInt32BE(index, 0);
+        payload.writeUInt32BE(begin, 4);
+        payload.writeUInt32BE(length, 8);
 
         return new Message(MESSAGE_REQUEST_ID, payload);
     }

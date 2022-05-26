@@ -16,14 +16,14 @@ export default class Torrent extends EventEmitter {
     file;
     peers = [];
     trackers = [];
-    piecesManager;
+    pieceManager;
 
     constructor(torrentId, clientConfig, downloadPath) {
         super();
         this.clientConfig = clientConfig;
         this.downloadPath = downloadPath;
         this.metadata = new TorrentMetadata(torrentId);
-        this.pieceManager = new PieceManager();
+        this.pieceManager = new PieceManager(this.metadata);
         this.file = fs.openSync(path.join(downloadPath, this.metadata.infoName), 'w');
         this.updateTrackers();
     }
@@ -48,12 +48,19 @@ export default class Torrent extends EventEmitter {
     }
 
     handlePieceResponse(response) {
+        this.pieceManager.printPercentDone();
+        this.pieceManager.addReceived(response);
+
         const offset = response.index * this.metadata.infoPieceLength + response.begin;
         fs.write(this.file, response.block, 0, response.block.length, offset, () => {});
-        try {
-            fs.closeSync(this.file);
-        } catch(err) {
-            console.error('Failed to close the file');
+
+        if (this.pieceManager.isDone()) {
+            console.log('DONE!');
+            try {
+                fs.closeSync(this.file);
+            } catch(err) {
+                console.error('Failed to close the file');
+            }
         }
     }
 }

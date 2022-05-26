@@ -20,18 +20,20 @@ export default class Peer extends EventEmitter {
     handshake = false;
     active = false;
     choked = true;
-    queue = [];
+    bitfield = [];
     ip;
     port;
     config;
     metadata;
+    pieceManager;
 
-    constructor(ip, port, config, metadata, piece) {
+    constructor(ip, port, config, metadata, pieceManger) {
         super();
         this.ip = ip;
         this.port = port
         this.config = config;
         this.metadata = metadata;
+        this.pieceManager = pieceManger;
 
         this.socket.on('connect', this.handleConnect.bind(this))
         this.socket.on('data', this.handleData.bind(this))
@@ -131,27 +133,40 @@ export default class Peer extends EventEmitter {
 
     onHaveMessage(message) {
         const { index } = message.parseHave();
-        this.queue.push(this.metadata.getPieceBlocks(index));
-        if (this.queue.length === 1) {
+        this.bitfield.push(...this.metadata.getPieceBlocks(index));
+        if (this.bitfield.length === 1) {
             this.sendPieceRequest();
         }
     }
 
     onBitfieldMessage(message) {
         const { bitfield } = message.parseBitfield();
-        bitfield.forEach(index => this.queue.push(this.metadata.getPieceBlocks(index)));
-        if (this.queue.length === bitfield.length) {
+        bitfield.forEach(index => this.bitfield.push(...this.metadata.getPieceBlocks(index)));
+        // console.log(this.bitfield)
+        if (this.bitfield.length === bitfield.length) {
             this.sendPieceRequest();
         }
     }
 
     onPieceMessage(message) {
+        // console.log(message.parsePiece())
         this.emit('piece', message.parsePiece());
+        if (!this.pieceManager.isDone()) {
+            this.sendPieceRequest();
+        }
     }
 
     sendPieceRequest() {
         if (this.choked) {
             return;
+        }
+        while (this.bitfield.length) {
+            const pieceBlock = this.bitfield.shift();
+            if (this.pieceManager.needed(pieceBlock)) {
+                this.socket.write(Message.buildRequest(pieceBlock).serialize());
+                this.pieceManager.addRequested(pieceBlock);
+                break;
+            }
         }
     }
 }
