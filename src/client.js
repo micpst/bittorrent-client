@@ -1,5 +1,5 @@
-import crypto from "crypto";
-import Torrent from "./torrent.js";
+import crypto from 'crypto';
+import Torrent from './torrent/index.js';
 
 export default class Client {
 
@@ -26,9 +26,10 @@ export default class Client {
 
         if (!this.torrents[torrent.metadata.infoHash]) {
             this.torrents[torrent.metadata.infoHash] = torrent;
+            torrent.download();
         }
 
-        return torrent;
+        return this.torrents[torrent.metadata.infoHash];
     }
 
     removeTorrent(infoHash) {

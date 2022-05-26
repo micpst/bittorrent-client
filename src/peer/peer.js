@@ -1,4 +1,6 @@
 import net from 'net';
+import EventEmitter from 'events';
+
 import Handshake from './handshake.js';
 import {
     Message,
@@ -10,26 +12,41 @@ import {
     MESSAGE_UNCHOKE_ID
 } from './message.js';
 
-export default class Peer {
 
-    config;
+export default class Peer extends EventEmitter {
+
+    socket = new net.Socket();
     data = Buffer.alloc(0);
     handshake = false;
+    active = false;
+    choked = true;
+    queue = [];
     ip;
-    metadata;
     port;
-    socket;
+    config;
+    metadata;
 
-    constructor(ip, port, metadata, config) {
+    constructor(ip, port, config, metadata, piece) {
+        super();
         this.ip = ip;
         this.port = port
         this.config = config;
         this.metadata = metadata;
-        this.socket = net.createConnection(this.port, this.ip)
-            .on('connect', this.handleConnect.bind(this))
-            .on('data', this.handleData.bind(this))
-            .on('end', this.handleEnd.bind(this))
-            .on('error', this.handleError.bind(this));
+
+        this.socket.on('connect', this.handleConnect.bind(this))
+        this.socket.on('data', this.handleData.bind(this))
+        this.socket.on('end', this.handleEnd.bind(this))
+        this.socket.on('error', this.handleError.bind(this))
+        this.socket.on('timeout', this.handleTimeout.bind(this));
+    }
+
+    connect() {
+        this.socket.connect(this.port, this.ip);
+        this.socket.setTimeout(30000);
+    }
+
+    close() {
+        this.socket.end();
     }
 
     handleConnect() {
@@ -38,6 +55,7 @@ export default class Peer {
             peerId: this.config.peerId
         });
         this.socket.write(handshakeMessage.serialize());
+        this.active = true;
     }
 
     handleData(data) {
@@ -50,45 +68,90 @@ export default class Peer {
         while (this.data.length >= 4 && this.data.length >= messageLength()) {
             const message = this.data.subarray(0, messageLength());
             this.data = this.data.subarray(messageLength());
-            this.handleMessage(message);
+
+            if (!this.handshake) this.handleHandshake(message);
+            else this.handleMessage(message);
         }
     }
 
     handleEnd() {
-
+        this.active = false;
     }
 
     handleError(error) {
         console.log(`[ERROR_PEER] ${error.message}`);
+        this.socket.end();
+    }
+
+    handleTimeout() {
+        console.log(`[ERROR_PEER] Peer socket timeout`);
+        this.socket.end();
+    }
+
+    handleHandshake(messageBuffer) {
+        const handshakeMessage = Handshake.deserialize(messageBuffer);
+        if (handshakeMessage.pstr === 'BitTorrent protocol' &&
+            handshakeMessage.infoHash !== null &&
+            handshakeMessage.infoHash.toString('hex') === this.metadata.infoHash
+        ) {
+            const interestedMessage = new Message(MESSAGE_INTERESTED_ID);
+            this.socket.write(interestedMessage.serialize());
+            this.handshake = true;
+        }
+        else {
+            this.handleError(new Error('Handshake error'));
+        }
     }
 
     handleMessage(messageBuffer) {
-        if (!this.handshake) {
-            const handshakeMessage = Handshake.deserialize(messageBuffer);
-            if (handshakeMessage.pstr === 'BitTorrent protocol' &&
-                handshakeMessage.infoHash !== null &&
-                handshakeMessage.infoHash.toString('hex') === this.metadata.infoHash
-            ) {
-                const interestedMessage = new Message(MESSAGE_INTERESTED_ID);
-                this.socket.write(interestedMessage.serialize());
-                this.handshake = true;
-            }
+        const message = Message.deserialize(messageBuffer);
+        switch (message.id) {
+            case MESSAGE_CHOKE_ID:
+                return this.onChokeMessage(message);
+            case MESSAGE_UNCHOKE_ID:
+                return this.onUnchokeMessage(message);
+            case MESSAGE_HAVE_ID:
+                return this.onHaveMessage(message);
+            case MESSAGE_BITFIELD_ID:
+                return this.onBitfieldMessage(message);
+            case MESSAGE_PIECE_ID:
+                return this.onPieceMessage(message);
         }
-        else {
-            const message = Message.deserialize(messageBuffer)
-            console.log(`${this.ip}:${this.port}`, message);
-            switch (message.id) {
-                case MESSAGE_CHOKE_ID:
+    }
 
-                case MESSAGE_UNCHOKE_ID:
+    onChokeMessage(message) {
+        this.choked = true;
+        this.socket.end();
+    }
 
-                case MESSAGE_HAVE_ID:
+    onUnchokeMessage(message) {
+        this.choked = false;
+        this.sendPieceRequest();
+    }
 
-                case MESSAGE_BITFIELD_ID:
+    onHaveMessage(message) {
+        const { index } = message.parseHave();
+        this.queue.push(this.metadata.getPieceBlocks(index));
+        if (this.queue.length === 1) {
+            this.sendPieceRequest();
+        }
+    }
 
-                case MESSAGE_PIECE_ID:
+    onBitfieldMessage(message) {
+        const { bitfield } = message.parseBitfield();
+        bitfield.forEach(index => this.queue.push(this.metadata.getPieceBlocks(index)));
+        if (this.queue.length === bitfield.length) {
+            this.sendPieceRequest();
+        }
+    }
 
-            }
+    onPieceMessage(message) {
+        this.emit('piece', message.parsePiece());
+    }
+
+    sendPieceRequest() {
+        if (this.choked) {
+            return;
         }
     }
 }

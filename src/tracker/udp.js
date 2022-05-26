@@ -150,7 +150,7 @@ export default class UdpHandler {
         requestBuffer.set(this.metadata.infoHashBuffer, 16);
         requestBuffer.set(this.config.peerId, 36);
         requestBuffer.writeBigUInt64BE(0n, 56);
-        requestBuffer.writeBigUInt64BE(this.metadata.length, 64)
+        requestBuffer.writeBigUInt64BE(this.metadata.infoLength, 64)
         requestBuffer.writeBigUInt64BE(0n, 72);
         requestBuffer.writeUInt32BE(0, 80);
         requestBuffer.writeUInt32BE(0, 84);
